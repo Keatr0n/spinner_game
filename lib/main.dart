@@ -19,8 +19,14 @@ class App extends StatelessWidget {
           child: Center(
             child: SpinnerGame(
               spinnerBackgroundColor: Colors.white,
-              gamePrimaryColor: Colors.indigo,
+              gamePrimaryColor: Colors.blue,
               gameBackgroundColor: Colors.grey.shade900,
+              goalColor: Colors.blue,
+              platformColor: Colors.white,
+              alertFutureComplete: Future.delayed(Duration(seconds: 5)).then((_) => "HEY IT WORKS!"),
+              onGameEnd: (val) {
+                print(val);
+              },
             ),
           ),
         ),

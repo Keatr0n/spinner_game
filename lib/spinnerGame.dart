@@ -13,13 +13,29 @@ class SpinnerGame extends StatefulWidget {
   SpinnerGame({
     this.size = 40,
     this.spinnerBackgroundColor,
+    this.spinnerPrimaryColor,
     this.gameBackgroundColor,
     this.gamePrimaryColor,
+    this.goalColor,
+    this.platformColor,
+    this.onGameEnd,
+    this.alertFutureComplete,
   });
   final double size;
   final Color? spinnerBackgroundColor;
+  final Color? spinnerPrimaryColor;
   final Color? gameBackgroundColor;
   final Color? gamePrimaryColor;
+  final Color? goalColor;
+  final Color? platformColor;
+
+  /// This will fire when the user exits the game. This will also pass the [alertFutureComplete] as the argument.
+  final void Function(dynamic)? onGameEnd;
+
+  /// This will let the user know when the future is complete.
+  /// This will also pass the completed value back to [onGameEnd] when the user exits.
+  final Future? alertFutureComplete;
+
   @override
   _SpinnerGameState createState() => _SpinnerGameState();
 }
@@ -38,7 +54,14 @@ class _SpinnerGameState extends State<SpinnerGame> {
       onPressed: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (BuildContext context) => _Game(widget.gameBackgroundColor, widget.gamePrimaryColor),
+            builder: (BuildContext context) => _Game(
+              backgroundColor: widget.gameBackgroundColor,
+              primaryColor: widget.gamePrimaryColor,
+              goalColor: widget.goalColor,
+              platformColor: widget.platformColor,
+              alertFutureComplete: widget.alertFutureComplete,
+              onGameEnd: widget.onGameEnd,
+            ),
           ),
         );
       },
@@ -56,9 +79,20 @@ class _SpinnerGameState extends State<SpinnerGame> {
 }
 
 class _Game extends StatefulWidget {
-  _Game(this.backgroundColor, this.primaryColor);
+  _Game({
+    this.backgroundColor,
+    this.primaryColor,
+    this.goalColor,
+    this.platformColor,
+    this.alertFutureComplete,
+    this.onGameEnd,
+  });
   final Color? backgroundColor;
   final Color? primaryColor;
+  final Color? goalColor;
+  final Color? platformColor;
+  final Future? alertFutureComplete;
+  final void Function(dynamic)? onGameEnd;
 
   @override
   __GameState createState() => __GameState();
@@ -72,7 +106,9 @@ class __GameState extends State<_Game> {
   List<_Platform> _platforms = [];
   List<_Hazard> _hazards = [];
 
-  _Goal _goal = _Goal(x: 220, y: 180);
+  Widget _exitButton = Container();
+
+  _Goal? _goal;
 
   double get screenWidth => MediaQuery.of(context).size.width;
   double get screenHeight => MediaQuery.of(context).size.height;
@@ -86,8 +122,8 @@ class __GameState extends State<_Game> {
     for (var i = 1; i <= 4; i++) {
       // might add hazards in later, but they make the game too hard at the moment
       //if (Random().nextBool() || _hazards.length > 2) {
-      _platforms.add(_Platform(x: Random().nextInt(((maxGameWidth / 2) - 100).floor()).toDouble(), y: ((maxGameHeight / 4) * i) - 90));
-      _platforms.add(_Platform(x: (maxGameWidth / 2) + Random().nextInt(((maxGameWidth / 2) - 100).floor()).toDouble(), y: ((maxGameHeight / 4) * i) - 90));
+      _platforms.add(_Platform(x: Random().nextInt(((maxGameWidth / 2) - 100).floor()).toDouble(), y: ((maxGameHeight / 4) * i) - 90, color: widget.platformColor));
+      _platforms.add(_Platform(x: (maxGameWidth / 2) + Random().nextInt(((maxGameWidth / 2) - 100).floor()).toDouble(), y: ((maxGameHeight / 4) * i) - 90, color: widget.platformColor));
       // } else {
       //   if (Random().nextBool()) {
       //     _platforms.add(_Platform(x: Random().nextInt(((maxGameWidth / 2) - 100).floor()).toDouble(), y: ((maxGameHeight / 4) * i) - 90));
@@ -98,7 +134,7 @@ class __GameState extends State<_Game> {
       //   }
       // }
     }
-    _goal = _Goal(x: Random().nextInt((maxGameWidth - 30).floor()).toDouble(), y: maxGameHeight - 70);
+    _goal = _Goal(x: Random().nextInt((maxGameWidth - 30).floor()).toDouble(), y: maxGameHeight - 70, color: widget.goalColor);
   }
 
   List<Widget> renderObjects(List<_GameObject> objects) {
@@ -116,21 +152,7 @@ class __GameState extends State<_Game> {
       color: Colors.white,
       child: Stack(
         children: [
-          Positioned(
-            top: 10,
-            right: 10,
-            child: TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Icon(Icons.exit_to_app),
-              style: TextButton.styleFrom(
-                primary: widget.primaryColor,
-                minimumSize: Size.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-          ),
+          Positioned(top: 0, right: 0, child: _exitButton),
           Positioned(
             left: 50,
             top: 14,
@@ -201,7 +223,7 @@ class __GameState extends State<_Game> {
 
   Widget gameSurface() {
     if (_player != null)
-      _player!.checkCollisions([_goal, ..._hazards, ..._platforms], () {
+      _player!.checkCollisions([_goal!, ..._hazards, ..._platforms], () {
         score++;
         buildMap();
       });
@@ -214,7 +236,7 @@ class __GameState extends State<_Game> {
           _player != null ? _player!.render() : Container(),
           ...renderObjects(_platforms),
           ...renderObjects(_hazards),
-          _goal.render(),
+          _goal != null ? _goal!.render() : Container(),
         ],
       ),
     );
@@ -232,11 +254,64 @@ class __GameState extends State<_Game> {
   void initState() {
     super.initState();
     Future.delayed(Duration.zero).then((value) {
+      if (widget.alertFutureComplete != null) {
+        widget.alertFutureComplete!.then((value) {
+          if (mounted) {
+            setState(() {
+              _exitButton = Stack(children: [
+                TextButton(
+                  onPressed: () {
+                    if (widget.onGameEnd != null) widget.onGameEnd!(value);
+
+                    Navigator.of(context).pop();
+                  },
+                  child: Icon(
+                    Icons.exit_to_app,
+                    size: 34,
+                  ),
+                  style: TextButton.styleFrom(
+                    primary: widget.primaryColor,
+                    minimumSize: Size.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ]);
+            });
+          }
+        });
+      }
+      _exitButton = TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: Icon(Icons.exit_to_app),
+        style: TextButton.styleFrom(
+          primary: widget.primaryColor,
+          minimumSize: Size.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+
       _player = _Player(
         maxX: maxGameWidth,
         maxY: maxGameHeight,
         color: widget.primaryColor,
       );
+      _goal = _Goal(x: 220, y: 180, color: widget.goalColor);
       gameTicker = Timer.periodic(Duration(milliseconds: 10), (_) {
         if (mounted) setState(() {});
       });
